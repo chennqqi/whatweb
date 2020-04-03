@@ -3,12 +3,13 @@ package whatweb
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/prometheus/common/log"
 	"io/ioutil"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/prometheus/common/log"
 )
 
 /*
@@ -23,10 +24,10 @@ TODO:
 */
 
 type HttpData struct {
-	Url		string
-	Headers	map[string][]string
-	Html	string
-	Jsret	string
+	Url     string
+	Headers map[string][]string
+	Html    string
+	Jsret   string
 }
 
 type analyzeData struct {
@@ -64,14 +65,52 @@ type category struct {
 
 // Wappalyzer implements analyze method as original wappalyzer does
 type Wappalyzer struct {
-	HttpData  *HttpData
+	HttpData   *HttpData
 	Apps       map[string]*application
 	Categories map[string]*category
 	JSON       bool
 }
 
 // Init
-func Init(appsJSONPath string, JSON bool) (wapp *Wappalyzer, err error) {
+func InitByJSON(appsFile []byte) (wapp *Wappalyzer, err error) {
+	wapp = &Wappalyzer{}
+
+	temporary := &temp{}
+	err = json.Unmarshal(appsFile, &temporary)
+	if err != nil {
+		log.Errorf("Couldn't unmarshal apps.json file: %s\n", err)
+		return nil, err
+	}
+
+	wapp.Apps = make(map[string]*application)
+	wapp.Categories = make(map[string]*category)
+
+	for k, v := range temporary.Categories {
+		catg := &category{}
+		if err = json.Unmarshal(*v, catg); err != nil {
+			log.Errorf("[!] Couldn't unmarshal Categories: %s\n", err)
+			return nil, err
+		}
+		wapp.Categories[k] = catg
+	}
+
+	for k, v := range temporary.Apps {
+		app := &application{}
+		app.Name = k
+		if err = json.Unmarshal(*v, app); err != nil {
+			log.Errorf("Couldn't unmarshal Apps: %s\n", err)
+			return nil, err
+		}
+		parseCategories(app, &wapp.Categories)
+		wapp.Apps[k] = app
+	}
+	wapp.JSON = true
+
+	return wapp, nil
+}
+
+// Init
+func InitByFile(appsJSONPath string, JSON bool) (wapp *Wappalyzer, err error) {
 	wapp = &Wappalyzer{}
 	//wapp.Transport = &http.Transport{
 	//	TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -124,7 +163,7 @@ type resultApp struct {
 	implies    interface{}
 }
 
-func (wapp *Wappalyzer) ConvHeader(headers string) (map[string][]string) {
+func (wapp *Wappalyzer) ConvHeader(headers string) map[string][]string {
 	head := make(map[string][]string)
 
 	tmp := strings.Split(strings.TrimRight(headers, "\n"), "\n")
@@ -134,7 +173,7 @@ func (wapp *Wappalyzer) ConvHeader(headers string) (map[string][]string) {
 		}
 		splitStr := strings.Split(v, ":")
 		header_key := strings.ToLower(strings.Replace(splitStr[0], "_", "-", -1))
-		header_val := strings.TrimSpace(strings.Join(splitStr[1:],""))
+		header_val := strings.TrimSpace(strings.Join(splitStr[1:], ""))
 
 		head[header_key] = append(head[header_key], header_val)
 	}
@@ -163,7 +202,7 @@ func (wapp *Wappalyzer) Analyze(httpdata *HttpData) (result interface{}, err err
 		analyze headers cookie
 
 		two set-cookie?
-	 */
+	*/
 	analyzeData.cookies = make(map[string]string)
 	for _, cookie := range httpdata.Headers["set-cookie"] {
 		keyValues := strings.Split(cookie, ";")
@@ -372,7 +411,7 @@ func analyzeHeaders(app *application, headers map[string][]string, detectedAppli
 				continue
 			}
 
-			if ok && pattrn.regex  == nil {
+			if ok && pattrn.regex == nil {
 				resApp := &resultApp{app.Name, app.Version, app.Categories, app.Excludes, app.Implies}
 				(*detectedApplications)[resApp.Name] = resApp
 			}
@@ -435,7 +474,7 @@ func analyzeCookies(app *application, cookies map[string]string, detectedApplica
 	for cookieName, v := range patterns {
 		cookieNameLowerCase := strings.ToLower(cookieName)
 		for _, pattrn := range v {
-			cookie, ok := cookies[cookieNameLowerCase];
+			cookie, ok := cookies[cookieNameLowerCase]
 
 			if !ok {
 				continue
@@ -443,7 +482,7 @@ func analyzeCookies(app *application, cookies map[string]string, detectedApplica
 
 			//fmt.Println(cookie, cookieName, pattrn)
 
-			if ok && pattrn.regex  == nil {
+			if ok && pattrn.regex == nil {
 				if _, ok := (*detectedApplications)[app.Name]; !ok {
 					resApp := &resultApp{app.Name, app.Version, app.Categories, app.Excludes, app.Implies}
 					(*detectedApplications)[resApp.Name] = resApp
@@ -460,4 +499,3 @@ func analyzeCookies(app *application, cookies map[string]string, detectedApplica
 		}
 	}
 }
-

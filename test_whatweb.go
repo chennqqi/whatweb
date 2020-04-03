@@ -1,13 +1,15 @@
-package main
+//+build ignore
+
+package whatweb
 
 import (
 	"fmt"
-	"github.com/prometheus/common/log"
 	"study/src/module"
+
+	"github.com/prometheus/common/log"
 )
 
-
-func main()  {
+func TestMain(t *testing.T) {
 	wapp, _ := whatweb.Init("src/data/app.json", false)
 
 	httpdata := &whatweb.HttpData{}
